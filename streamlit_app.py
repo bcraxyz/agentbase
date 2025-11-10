@@ -40,7 +40,7 @@ with st.sidebar:
     if agents:
         selected_agent = st.selectbox(
             "Select Agent to Chat:",
-            list(available_agents.keys()),
+            list(agents.keys()),
             index=0
         )
 if "messages" not in st.session_state:
