@@ -11,7 +11,7 @@ def init_vertex(project, location):
     """Initialize Vertex AI"""
     vertexai.init(project=project, location=location)
 
-def chat_with_agent(agent_resource, message, session_id=None):
+def chat_with_agent(agent_resource, message, session_id=None, user_id="default_user"):
     """Send a message to the agent and get response"""
     try:
         agent = agent_engines.get(agent_resource)
