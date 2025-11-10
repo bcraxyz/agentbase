@@ -18,7 +18,7 @@ def chat_with_agent(agent_resource, message, session_id=None, user_id="default_u
         
         if not session_id:
             session = agent.create_session(user_id=user_id)
-            session_id = session.name
+            session_id = session['name']
         
         response = agent.query(
             session=session_id,
