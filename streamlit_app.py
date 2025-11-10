@@ -17,12 +17,13 @@ def chat_with_agent(agent_resource, message, session_id=None, user_id="default_u
         agent = agent_engines.get(agent_resource)
         
         if not session_id:
-            session = agent.create_session()
+            session = agent.create_session(user_id=user_id)
             session_id = session.name
         
         response = agent.query(
             session=session_id,
-            query=message
+            query=message,
+            user_id=user_id
         )
         
         return response.text, session_id
