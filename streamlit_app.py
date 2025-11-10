@@ -18,15 +18,18 @@ def chat_with_agent(agent_resource, message, session_id=None, user_id="default_u
         
         if not session_id:
             session = agent.create_session(user_id=user_id)
-            session_id = session['name']
+            session_id = f"{agent_resource}/sessions/{session['id']}"
         
-        response = agent.query(
-            session=session_id,
-            query=message,
-            user_id=user_id
-        )
-        
-        return response.text, session_id
+        response_text = ""
+        for response in agent.stream_query(
+            user_id=user_id,
+            session_id=session_id,
+            message=message,
+        ):
+            if hasattr(response, 'text') and response.text:
+                response_text += response.text
+                
+        return response_text, session_id
     except Exception as e:
         raise Exception(f"Error chatting with agent: {str(e)}")
 
@@ -121,7 +124,6 @@ if prompt := st.chat_input("Ask anything"):
                 )
 
                 st.session_state.agent_session_id = new_session_id
-                
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 st.rerun()
         except Exception as e:
