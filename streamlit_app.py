@@ -27,9 +27,9 @@ def get_client():
     return genai.Client(api_key=api_key)
 
 def list_agents():
-    agents_list = []
+    agents_list = {}
     for agent in agent_engines.list():
-        agents_map[agent.display_name] = agent.resource_name
+        agents_list[agent.display_name] = agent.resource_name
     return agents_list
 
 st.set_page_config(page_title="Agentbase", page_icon="🤖", initial_sidebar_state="auto")
