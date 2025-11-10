@@ -1,4 +1,5 @@
 import os
+import uuid
 import dotenv
 import streamlit as st
 import vertexai 
@@ -40,6 +41,10 @@ def list_agents():
         return {}
 
 st.set_page_config(page_title="Agentbase", page_icon="🤖", initial_sidebar_state="auto")
+
+# Generate a unique user ID for this session
+if "user_id" not in st.session_state:
+    st.session_state.user_id = str(uuid.uuid4())
 
 with st.sidebar:
     st.title("💬 Agentbase")
@@ -110,7 +115,8 @@ if prompt := st.chat_input("Ask anything"):
                 response_text, new_session_id = chat_with_agent(
                     agent_resource=agent_resource,
                     message=prompt,
-                    session_id=session_id
+                    session_id=session_id,
+                    user_id=st.session_state.user_id
                 )
 
                 st.session_state.agent_session_id = new_session_id
