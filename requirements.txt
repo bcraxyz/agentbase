@@ -1,3 +1,4 @@
 streamlit==1.51.0
 google-cloud-aiplatform==1.126.1
+google-cloud-discoveryengine==0.15.0
 google-genai==1.49.0
