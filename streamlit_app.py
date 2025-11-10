@@ -2,11 +2,16 @@ import os
 import dotenv
 import streamlit as st
 import google.genai as genai
+import vertexai 
+from vertexai import agent_engines
 
 dotenv.load_dotenv()
 MODEL = "gemini-2.5-flash-lite"
 
 use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "false").lower() == "true"
+
+def init_vertex():
+    vertexai.init(project=project, location=location)
 
 def get_client():
     if use_vertex:
@@ -21,10 +26,23 @@ def get_client():
         raise EnvironmentError("Missing GOOGLE_API_KEY environment variable.")
     return genai.Client(api_key=api_key)
 
+def list_agents():
+    agents_list = []
+    for agent in agent_engines.list():
+        agents_map[agent.display_name] = agent.resource_name
+    return agents_list
+
 st.set_page_config(page_title="Agentbase", page_icon="🤖", initial_sidebar_state="auto")
 with st.sidebar:
     st.title("💬 Agentbase")
-
+    
+    agents = list_agents()
+    if agents:
+        selected_agent = st.selectbox(
+            "Select Agent to Chat:",
+            list(available_agents.keys()),
+            index=0
+        )
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
