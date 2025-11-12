@@ -23,30 +23,28 @@ credentials, project = google.auth.default()
 authed_session = AuthorizedSession(credentials)
 
 request_body = {
-    "streamAssistRequest": {
-        "query": {"parts": [{"text": PROMPT}]},
-        "filter": "",
-        "fileIds": [],
-        "answerGenerationMode": "AGENT",
-        "assistSkippingMode": "REQUEST_ASSIST",
-        "agentsConfig": {
-            "agent": AGENT_ID
-        },
-        "agentsSpec": {
-            "agentSpecs": [
-                {"agentId": AGENT_ID}
-            ]
-        },
-        "toolsSpec": {
-            "vertexAiSearchSpec": {},
-            "toolRegistry": "default_tool_registry",
-            "imageGenerationSpec": {},
-            "videoGenerationSpec": {},
-            "webGroundingSpec": {}
-        },
-        "userMetadata": {
-            "timeZone": "Asia/Singapore"
-        }
+    "query": {"text": PROMPT},
+    "filter": "",
+    "fileIds": [],
+    "answerGenerationMode": "AGENT",
+    "assistSkippingMode": "REQUEST_ASSIST",
+    "agentsConfig": {
+        "agent": AGENT_ID
+    },
+    "agentsSpec": {
+        "agentSpecs": [
+            {"agentId": AGENT_ID}
+        ]
+    },
+    "toolsSpec": {
+        "vertexAiSearchSpec": {},
+        "toolRegistry": "default_tool_registry",
+        "imageGenerationSpec": {},
+        "videoGenerationSpec": {},
+        "webGroundingSpec": {}
+    },
+    "userMetadata": {
+        "timeZone": "Asia/Singapore"
     }
 }
 
@@ -55,45 +53,17 @@ response = authed_session.post(
     headers={"Content-Type": "application/json"},
     data=json.dumps(request_body)
 )
-print(response.text)
-print("--- Streaming Response ---")
-full_model_output = ""
-final_answer_data = None
 
+output = ''
 try:
-    response_chunks = response.text.strip().split('\n')
-    
-    for chunk in response_chunks:
-        if not chunk.strip():
-            continue
-            
-        try:
-            response_part = json.loads(chunk)
-        except json.JSONDecodeError:
-            continue 
-
-        answer_data = response_part.get('answer', {})
-        
-        if answer_data.get('state') == 'IN_PROGRESS':
-            try:
-                streaming_text = answer_data['replies'][-1]['groundedContent']['content']['text']
-                print(streaming_text, end="") 
-                full_model_output += streaming_text
-            except (KeyError, IndexError):
-                pass 
-        
-        elif answer_data.get('state') == 'SUCCEEDED':
-            final_answer_data = response_part
-            
-    print("\n--- End of Stream ---")
-
+    data_array = json.loads(response.text)
+    for data in data_array:
+        if data.get('answer', {}).get('state') == 'IN_PROGRESS':
+            content = data['answer']['replies'][-1]['groundedContent'].get('content', {})
+            if not content.get('thought', False):
+                streaming_response = content.get('text', '')
+                if streaming_response:
+                    output += streaming_response
+                    print(streaming_response)
 except Exception as e:
-    print(f"\nAn error occurred during stream processing: {e}")
-    sys.exit(1)
-    
-model_response_text = full_model_output
-
-if final_answer_data:
-    pass 
-
-print('Final consolidated model response:', model_response_text)
+    print(f"Error: {e}")
