@@ -152,6 +152,18 @@ with st.sidebar:
     
     # Display authenticated user
     st.success(f"👤 **Logged in as:**  \n{authenticated_user}")
+
+    # Logout button - clears all sessions and state
+    if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+        # Clear all session state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        
+        # In production with IAP, redirect to IAP logout URL
+        if os.getenv("ENVIRONMENT") != "dev":
+            st.info("To fully logout, close your browser or clear cookies for this domain.")
+        
+        st.rerun()
     
     # Google Cloud configuration
     st.subheader("☁️ GCP Configuration")
