@@ -10,14 +10,17 @@ from google.oauth2 import id_token
 
 dotenv.load_dotenv()
 
-def validate_iap_jwt(iap_jwt):
+def validate_iap_jwt(iap_jwt, expected_audience):
     """
-    Validate and decode IAP JWT token. 
+    Validate and decode IAP JWT token.
     Returns user email if valid, None otherwise.
     """
     try:
         if not iap_jwt:
             return None
+        
+        if not expected_audience:
+            raise Exception("IAP_AUDIENCE not configured")
             
         decoded_token = id_token.verify_oauth2_token(
             iap_jwt,
