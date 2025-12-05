@@ -24,7 +24,7 @@ def validate_iap_jwt(iap_jwt, expected_audience):
             
         decoded_token = id_token.verify_oauth2_token(
             iap_jwt,
-            google_requests.Request(),
+            requests.Request(),
             audience=expected_audience
         )
         
