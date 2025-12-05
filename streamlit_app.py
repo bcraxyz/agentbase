@@ -12,54 +12,52 @@ dotenv.load_dotenv()
 
 def validate_iap_jwt(iap_jwt):
     """
-    Validate and decode IAP JWT token.
+    Validate and decode IAP JWT token. 
     Returns user email if valid, None otherwise.
     """
     try:
-        # In Cloud Run with IAP, the expected audience is:
-        # /projects/PROJECT_NUMBER/global/backendServices/SERVICE_ID
-        # For development/testing without IAP, this will gracefully fail
-        
-        # You'll need to set this based on your Cloud Run service
-        # Find it in: Cloud Console > Security > Identity-Aware Proxy > Your Service
-        expected_audience = os.getenv("IAP_AUDIENCE", "")
-        
         if not iap_jwt:
             return None
             
         decoded_token = id_token.verify_oauth2_token(
             iap_jwt,
-            requests.Request(),
+            google_requests.Request(),
             audience=expected_audience
         )
         
         return decoded_token.get("email")
     except Exception as e:
-        # In development without IAP, return a default user
-        if os.getenv("ENVIRONMENT") == "development":
-            return os.getenv("DEV_USER_EMAIL", "dev@example.com")
-        st.error(f"JWT validation failed: {e}")
-        return None
+        raise Exception(f"JWT validation failed: {e}")
 
 def get_authenticated_user():
     """
-    Extract authenticated user from IAP headers.
+    Extract authenticated user from IAP headers using st.context.
     Falls back to development mode if IAP headers not present.
     """
-    # Try to get IAP JWT from headers (injected by Streamlit in request context)
-    # Note: Streamlit doesn't directly expose headers, so we need a workaround
-    
-    # Check if running behind IAP via environment or header
-    iap_jwt = os.getenv("HTTP_X_GOOG_IAP_JWT_ASSERTION")
-    
-    if iap_jwt:
-        return validate_iap_jwt(iap_jwt)
-    
-    # Development mode fallback
     if os.getenv("ENVIRONMENT") == "development":
         return os.getenv("DEV_USER_EMAIL", "dev@example.com")
     
-    return None
+    try:
+        headers = st.context.headers
+        
+        if headers is None:
+            return None
+        
+        iap_jwt = headers.get("X-Goog-Iap-Jwt-Assertion")
+        
+        if not iap_jwt:
+            return None
+        
+        expected_audience = os.getenv("IAP_AUDIENCE", "")
+        if not expected_audience:
+            st.error("IAP_AUDIENCE environment variable not set")
+            return None
+        
+        return validate_iap_jwt(iap_jwt, expected_audience)
+        
+    except Exception as e:
+        st.error(f"Error extracting IAP user: {e}")
+        return None
 
 def init_vertex(project, location):
     """Initialize Vertex AI with project and location."""
@@ -131,7 +129,7 @@ def reset_conversation(user_email, agent_resource):
 # Page configuration
 st.set_page_config(
     page_title="Agentbase", 
-    page_icon="🤖", 
+    page_icon="💬", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -150,12 +148,10 @@ if "agent_sessions" not in st.session_state:
 
 # Sidebar configuration
 with st.sidebar:
-    st.title("🤖 Agentbase")
+    st.title("💬 Agentbase")
     
     # Display authenticated user
     st.success(f"👤 **Logged in as:**  \n{authenticated_user}")
-    
-    st.divider()
     
     # Google Cloud configuration
     st.subheader("☁️ GCP Configuration")
@@ -170,8 +166,8 @@ with st.sidebar:
     location = st.text_input(
         "Location", 
         value=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
-        placeholder="us-central1",
-        help="Google Cloud region for Vertex AI"
+        placeholder="your-gcp-region",
+        help="Your Google Cloud Region for Vertex AI"
     )
 
     agents = {}
@@ -187,13 +183,11 @@ with st.sidebar:
                 st.session_state.vertex_initialized = True
                 st.session_state.project = project
                 st.session_state.location = location
-                st.success("✓ Vertex AI initialized")
             except Exception as e:
                 st.error(f"Failed to initialize Vertex AI: {e}")
                 st.session_state.vertex_initialized = False
         
         if st.session_state.get("vertex_initialized"):
-            st.divider()
             st.subheader("🎯 Agent Selection")
             
             agents = list_agents()        
@@ -213,17 +207,15 @@ with st.sidebar:
             else:
                 st.warning("⚠️ No agents found in this project/location")
     else:
-        st.warning("⚠️ Please configure GCP Project ID and Location")
+        st.warning("⚠️ Please configure Google Cloud Project ID and Location")
 
 # Main chat interface
-st.title("💬 Agent Chat Interface")
-
 if not st.session_state.get("vertex_initialized"):
-    st.info("👈 Please configure Google Cloud Project and Location in the sidebar to get started.")
+    st.info("👈 Please configure Google Cloud Project and Location to get started.")
     st.stop()
 
 if not selected_agent or not agents:
-    st.info("👈 Please select an agent from the sidebar to start chatting.")
+    st.info("👈 Please select an agent to start chatting.")
     st.stop()
 
 agent_resource = agents[selected_agent]
@@ -242,8 +234,6 @@ with st.expander("ℹ️ Agent Information", expanded=False):
     with col2:
         st.write("**Project:**", project)
         st.write("**Location:**", location)
-
-st.divider()
 
 # Display chat history
 for message in st.session_state[messages_key]:
