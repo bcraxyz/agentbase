@@ -2,3 +2,4 @@ streamlit==1.52.0
 google-cloud-aiplatform==1.129.0
 python-dotenv==1.2.1
 google-auth==2.43.0
+cryptography==46.0.3
