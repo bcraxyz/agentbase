@@ -12,8 +12,7 @@ dotenv.load_dotenv()
 
 def validate_iap_jwt(iap_jwt, expected_audience):
     """
-    Validate and decode IAP JWT token.
-    Returns user email if valid, None otherwise.
+    Validate and decode IAP JWT token. Returns user email if valid, None otherwise.
     """
     try:
         if not iap_jwt:
@@ -21,11 +20,13 @@ def validate_iap_jwt(iap_jwt, expected_audience):
         
         if not expected_audience:
             raise Exception("IAP_AUDIENCE not configured")
-            
-        decoded_token = id_token.verify_oauth2_token(
+
+        iap_certs_url = "https://www.gstatic.com/iap/verify/public_key"
+        decoded_token = id_token.verify_token(
             iap_jwt,
             requests.Request(),
-            audience=expected_audience
+            audience=expected_audience,
+            certs_url=iap_certs_url
         )
         
         return decoded_token.get("email")
@@ -37,7 +38,7 @@ def get_authenticated_user():
     Extract authenticated user from IAP headers using st.context.
     Falls back to development mode if IAP headers not present.
     """
-    if os.getenv("ENVIRONMENT") == "development":
+    if os.getenv("ENVIRONMENT") == "dev":
         return os.getenv("DEV_USER_EMAIL", "dev@example.com")
     
     try:
