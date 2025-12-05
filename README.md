@@ -1,7 +1,7 @@
 # Agentbase
 
 ## Overview
-This guide covers deploying the Agentbase app to Google Cloud Run with Identity-Aware Proxy (IAP) authentication, integrated with Entra ID.
+This guide covers deploying the Streamlit Agentbase application to Google Cloud Run with Identity-Aware Proxy (IAP) authentication, integrated with Entra ID.
 
 ---
 
@@ -118,36 +118,56 @@ https://iap.googleapis.com/v1/oauth/clientIds/YOUR_IAP_CLIENT_ID:handleRedirect
 
 ---
 
-## Step 4: Enable IAP for Cloud Run
+## Step 4: Enable IAP for Cloud Run (One-Click Method)
 
-### 4.1 Create OAuth Consent Screen
+### 4.1 Enable IAP via Cloud Console
 
+1. Go to **Cloud Console** > **Cloud Run** > Select your service
+2. Click **Security** tab
+3. Under **Authentication**, click **Enable IAP**
+4. Configure external identity provider:
+   - Choose **External identities**
+   - Select **OIDC** as provider type
+   - Configure Entra ID:
+     - **Issuer URL**: `https://login.microsoftonline.com/{TENANT_ID}/v2.0`
+     - **Client ID**: From Entra ID app registration
+     - **Client Secret**: From Entra ID app registration
+5. Click **Save**
+
+### 4.2 Get IAP Audience for Cloud Run
+
+For the new Cloud Run IAP, the audience format is different from traditional IAP:
+
+**Method 1: From Cloud Run Service Details**
 ```bash
-# This needs to be done in Cloud Console if not already configured
-# Go to: APIs & Services > OAuth consent screen
+gcloud run services describe SERVICE_NAME \
+    --region=REGION \
+    --format="value(metadata.annotations.'run.googleapis.com/iap-jwt-audience')"
 ```
 
-### 4.2 Enable IAP on Cloud Run Service
+**Method 2: From JWT Token (after first login)**
+After you first access the service, check the JWT token. The `aud` claim will show the audience.
 
-1. Go to **Cloud Console** > **Security** > **Identity-Aware Proxy**
-2. Find your Cloud Run service
-3. Toggle IAP to **ON**
-4. Configure external identity provider:
-   - Provider: **OpenID Connect**
-   - Issuer: `https://login.microsoftonline.com/{TENANT_ID}/v2.0`
-   - Client ID: From Entra ID app registration
-   - Client Secret: From Entra ID app registration
+**Method 3: Use Project-based Audience**
+For Cloud Run with IAP, the audience is typically:
+```
+/projects/PROJECT_NUMBER/apps/PROJECT_ID
+```
 
-### 4.3 Get IAP Audience
+To get your PROJECT_NUMBER:
+```bash
+gcloud projects describe PROJECT_ID --format="value(projectNumber)"
+```
 
-1. In IAP console, click on your service
-2. In the sidebar, click **Edit OAuth client**
-3. Note the **Client ID** - this is your `IAP_AUDIENCE`
-4. Format: `/projects/PROJECT_NUMBER/global/backendServices/SERVICE_ID`
+Then construct:
+```bash
+IAP_AUDIENCE="/projects/$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')/apps/PROJECT_ID"
 
----
+echo $IAP_AUDIENCE
+# Output: /projects/123456789/apps/your-project-id
+```
 
-## Step 5: Configure IAP Access
+### 4.3 Update Cloud Run with IAP Audience
 
 Grant access to specific users/groups:
 
@@ -217,8 +237,16 @@ gcloud run services update ${SERVICE_NAME} \
                                       ▼
                               ┌───────────────┐
                               │  Streamlit    │
-                              │  Validates &  │
-                              │  Extracts     │
+                              │  Reads header │
+                              │  via internal │
+                              │  websocket    │
+                              │  API          │
+                              └───────────────┘
+                                      │
+                                      ▼
+                              ┌───────────────┐
+                              │  Validate JWT │
+                              │  Extract      │
                               │  User Email   │
                               └───────────────┘
                                       │
@@ -231,9 +259,46 @@ gcloud run services update ${SERVICE_NAME} \
                               └───────────────┘
 ```
 
+**Important:** Streamlit doesn't expose HTTP headers in the standard API. The app uses `streamlit.web.server.websocket_headers._get_websocket_headers()` to access the IAP JWT. This is an internal API, but it's the only way to read headers in Streamlit.
+
 ---
 
 ## Troubleshooting
+
+### Issue: Don't know the IAP Audience
+
+**Problem:** Can't find the correct audience format for JWT validation
+
+**Solution - Skip validation temporarily:**
+```python
+# In streamlit_app.py, modify get_authenticated_user()
+def get_authenticated_user():
+    if os.getenv("ENVIRONMENT") == "development":
+        return os.getenv("DEV_USER_EMAIL", "dev@example.com")
+    
+    try:
+        headers = st.context.headers
+        if headers is None:
+            return None
+        
+        iap_jwt = headers.get("X-Goog-Iap-Jwt-Assertion")
+        if not iap_jwt:
+            return None
+        
+        # TEMPORARY: Decode without verification to see the audience
+        import jwt
+        decoded = jwt.decode(iap_jwt, options={"verify_signature": False})
+        st.sidebar.info(f"JWT Audience: {decoded.get('aud')}")
+        
+        # Extract email without validation (for testing only)
+        return decoded.get("email")
+        
+    except Exception as e:
+        st.error(f"Error: {e}")
+        return None
+```
+
+Then use the displayed audience value in your `IAP_AUDIENCE` environment variable.
 
 ### Issue: JWT Validation Fails
 
@@ -243,6 +308,19 @@ gcloud run services update ${SERVICE_NAME} \
 1. Verify `IAP_AUDIENCE` environment variable is set correctly
 2. Check Cloud Run logs: `gcloud run services logs read ${SERVICE_NAME}`
 3. Ensure service account has necessary permissions
+4. Verify headers are being received: Add debug logging in `get_authenticated_user()`
+
+### Issue: Headers Not Available
+
+**Problem:** `_get_websocket_headers()` returns None
+
+**Solutions:**
+1. This is a known Streamlit limitation - headers may not be available in all contexts
+2. Verify you're accessing the app via HTTPS (required for IAP)
+3. Check Streamlit version compatibility (tested with 1.51.0)
+4. Alternative: Use a lightweight ASGI middleware wrapper (see below for advanced solution)
+
+**Advanced Alternative:** If `_get_websocket_headers()` is unreliable, you can wrap Streamlit in a lightweight ASGI app that extracts headers and passes them via query params or session state. This is more complex but more robust.
 
 ### Issue: Cannot List Agents
 
