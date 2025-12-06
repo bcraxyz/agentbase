@@ -69,7 +69,7 @@ def chat_with_agent(agent_resource, message, user_email):
     
     if session_key not in st.session_state.agent_sessions:
         session = agent.create_session(user_id=user_email)
-        session_id = f"{agent_resource}/sessions/{session['id']}"
+        session_id = session['id']
         st.session_state.agent_sessions[session_key] = session_id
     else:
         session_id = st.session_state.agent_sessions[session_key]
