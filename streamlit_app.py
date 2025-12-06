@@ -41,12 +41,10 @@ def get_authenticated_user():
     
     try:
         headers = st.context.headers
-        
         if headers is None:
             return None
         
         iap_jwt = headers.get("X-Goog-Iap-Jwt-Assertion")
-        
         if not iap_jwt:
             return None
         
@@ -83,11 +81,17 @@ def chat_with_agent(agent_resource, message, user_email):
     else:
         session_id = st.session_state.agent_sessions[session_key]
     
-    return agent.stream_query(
+    response_stream = agent.stream_query(
         user_id=user_email,
         session_id=session_id,
         message=message,
     )
+    
+    for chunk in response_stream:
+        if hasattr(chunk, "text") and chunk.text:
+            yield chunk.text
+        elif hasattr(chunk, "content") and chunk.content:
+            yield chunk.content
 
 def list_agents():
     """List available agents from Vertex AI Agent Engine."""
@@ -165,15 +169,14 @@ with st.sidebar:
                         help="Select an agent to chat with"
                     )
                     
-                    # Reset conversation button
                     if selected_agent:
                         if st.button("🔄 Reset Conversation", use_container_width=True):
-                            reset_conversation(authenticated_user, agents[selected_agent], f"messages_{current_agent_res}")
+                            reset_conversation(authenticated_user, agents[selected_agent], f"messages_{agents[selected_agent]}")
                             st.rerun()
                 else:
-                    st.warning("⚠️ No agents found in this project/location")
+                    st.warning("⚠️ No agents found")
     else:
-        st.warning("⚠️ Please configure Google Cloud Project ID and Location")
+        st.warning("⚠️ Please configure Project ID and Location")
 
     # Display authenticated user
     st.success(f"👤 **Logged in as:**  \n{authenticated_user}")
@@ -236,3 +239,4 @@ if prompt := st.chat_input("Ask anything..."):
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
+            st.error(error_msg)
