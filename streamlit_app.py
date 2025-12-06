@@ -90,7 +90,7 @@ def chat_with_agent(agent_resource, message, user_email):
     
     return response
 
-@st.cache_data(ttl=300)
+@st.cache_data()
 def list_agents(project, location):
     """List available agents from Vertex AI Agent Engine."""
     try:
@@ -217,11 +217,11 @@ if prompt := st.chat_input("Ask anything..."):
                 )
 
             if response_text:
-                st.markdown(response_text)
                 st.session_state[messages_key].append({
                     "role": "assistant", 
                     "content": response_text
                 })
+                st.markdown(response_text)
             else:
                 st.warning("⚠️ No response received from agent")
             
