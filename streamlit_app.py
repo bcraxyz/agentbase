@@ -81,16 +81,14 @@ def chat_with_agent(agent_resource, message, user_email):
     )
 
     response = ""
-    raw_chunks = []
     for chunk in response_stream:
-        raw_chunks.append(chunk)
-        if hasattr(chunk, "text") and chunk.text:
-            response += chunk.text
+        if isinstance(chunk, dict) and "content" in chunk:
+            parts = chunk.get("content", {}).get("parts", [])
+            for part in parts:
+                if isinstance(part, dict) and "text" in part:
+                    response += part["text"]
     
-    return response, raw_chunks
-    #for chunk in response_stream:
-    #    if hasattr(chunk, "text") and chunk.text:
-    #        yield chunk.text
+    return response
 
 @st.cache_data(ttl=300)
 def list_agents(project, location):
@@ -150,9 +148,7 @@ with st.sidebar:
         try:
             vertexai.init(project=project, location=location)
 
-            with st.spinner("Loading agents..."):
-                agents_result = list_agents(project, location)
-                
+            agents_result = list_agents(project, location)    
             if "error" in agents_result:
                 st.error(f"Error listing agents: {agents_result['error']}")
             else:
@@ -227,25 +223,7 @@ if prompt := st.chat_input("Ask anything..."):
                     "content": response_text
                 })
             else:
-                st.warning("⚠️ No response received from agent")
-                with st.expander("🔍 Debug: Raw Response"):
-                    st.write(f"Received {len(raw_chunks)} chunks")
-                    for i, chunk in enumerate(raw_chunks):
-                        st.write(f"**Chunk {i}:** {type(chunk).__name__}")
-                        st.write(chunk)
-                
-            #stream = chat_with_agent(
-            #    agent_resource=agent_resource,
-            #    message=prompt,
-            #    user_email=authenticated_user
-            #)
-            
-            #response_text = st.write_stream(stream)
-            
-            #st.session_state[messages_key].append({
-            #    "role": "assistant", 
-            #    "content": response_text
-            #})
+                st.warning("⚠️ No response received from agent")L
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
