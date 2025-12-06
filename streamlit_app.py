@@ -41,9 +41,9 @@ def get_authenticated_user():
         if not iap_jwt:
             return None
         
-        expected_audience = st.secrets.get("IAP_AUDIENCE", "")
+        expected_audience = os.getenv("IAP_AUDIENCE", "")
         if not expected_audience:
-            st.error("IAP_AUDIENCE not configured in secrets")
+            st.error("IAP_AUDIENCE environment variable not configured.")
             return None
         
         return validate_iap_jwt(iap_jwt, expected_audience)
@@ -131,8 +131,8 @@ with st.sidebar:
     st.title("💬 Agentbase")
     
     with st.expander("**⚙️ Settings**", expanded=False):
-        project = st.text_input("Project ID", value=st.secrets.get("GOOGLE_CLOUD_PROJECT", ""))        
-        location = st.text_input("Location", value=st.secrets.get("GOOGLE_CLOUD_LOCATION", "us-central1"))
+        project = st.text_input("Project ID", value=os.getenv("GOOGLE_CLOUD_PROJECT", ""))        
+        location = st.text_input("Location", value=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"))
 
     agents = {}
     selected_agent = None
