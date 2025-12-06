@@ -205,9 +205,9 @@ if prompt := st.chat_input("Ask anything..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-   st.session_state[messages_key].append({"role": "user", "content": prompt})
+    st.session_state[messages_key].append({"role": "user", "content": prompt})
     
-     with st.chat_message("assistant"):
+    with st.chat_message("assistant"):
         try:
             with st.spinner("Thinking..."):
                 response_text = chat_with_agent(
