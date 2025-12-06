@@ -210,7 +210,7 @@ if prompt := st.chat_input("Ask anything..."):
     with st.chat_message("assistant"):
         try:
             with st.spinner("Thinking..."):
-                response_text, raw_chunks = chat_with_agent(
+                response_text = chat_with_agent(
                     agent_resource=agent_resource,
                     message=prompt,
                     user_email=authenticated_user
