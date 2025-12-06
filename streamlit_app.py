@@ -93,6 +93,7 @@ def chat_with_agent(agent_resource, message, user_email):
         elif hasattr(chunk, "content") and chunk.content:
             yield chunk.content
 
+@st.cache_data(ttl=300)
 def list_agents():
     """List available agents from Vertex AI Agent Engine."""
     try:
@@ -101,8 +102,27 @@ def list_agents():
             agents_list[agent.display_name] = agent.resource_name
         return agents_list
     except Exception as e:
-        st.error(f"Error listing agents: {e}")
-        return {}
+        return {"error": str(e)}
+
+def generate_chat_response(agent_resource, message, user_email):
+    """
+    Manually iterates the stream to ensure we capture text correctly.
+    """
+    agent = agent_engines.get(agent_resource)
+    session_key = get_user_session_key(user_email, agent_resource)
+    
+    if session_key not in st.session_state.agent_sessions:
+        session = agent.create_session(user_id=user_email)
+        session_id = f"{agent_resource}/sessions/{session['id']}"
+        st.session_state.agent_sessions[session_key] = session_id
+    else:
+        session_id = st.session_state.agent_sessions[session_key]
+    
+    return agent.stream_query(
+        user_id=user_email,
+        session_id=session_id,
+        message=message,
+    )
 
 def reset_conversation(user_email, agent_resource, history_key):
     """Reset the conversation session for current user and agent."""
@@ -147,21 +167,19 @@ with st.sidebar:
     
     # Initialize Vertex AI if credentials provided
     if project and location:
-        if "vertex_initialized" not in st.session_state or \
-            st.session_state.get("project") != project or \
-            st.session_state.get("location") != location:
-            try:
-                vertexai.init(project=project, location=location)
-                st.session_state.vertex_initialized = True
-                st.session_state.project = project
-                st.session_state.location = location
-            except Exception as e:
-                st.error(f"Failed to initialize Vertex AI: {e}")
+        try:
+            vertexai.init(project=project, location=location)
+
+            with st.spinner("Loading agents..."):
+                agents_result = list_agents(project, location)
+                
+            if "error" in agents_result:
+                st.error(f"Error listing agents: {agents_result['error']}")
+            else:
+                agents = agents_result
         
-        if st.session_state.get("vertex_initialized"):
-            with st.expander("**🎯 Agent Selection**", expanded=True):
-                agents = list_agents()        
-                if agents:
+            if agents:
+                with st.expander("**🤖 Agent Selection**", expanded=True):
                     selected_agent = st.selectbox(
                         "Available Agents",
                         list(agents.keys()),
@@ -173,8 +191,11 @@ with st.sidebar:
                         if st.button("🔄 Reset Conversation", use_container_width=True):
                             reset_conversation(authenticated_user, agents[selected_agent], f"messages_{agents[selected_agent]}")
                             st.rerun()
-                else:
+            else:
+                if not "error" in agents_result:
                     st.warning("⚠️ No agents found")
+        except Exception as e:
+            st.error(f"Initialization Error: {e}")
     else:
         st.warning("⚠️ Please configure Project ID and Location")
 
@@ -195,12 +216,8 @@ with st.sidebar:
             st.rerun()
 
 # Main chat interface
-if not st.session_state.get("vertex_initialized"):
-    st.info("👈 Please configure Google Cloud Project and Location to get started.")
-    st.stop()
-
-if not selected_agent or not agents:
-    st.info("👈 Please select an agent to start chatting.")
+if not selected_agent:
+    st.info("👈 Please select an agent to get started.")
     st.stop()
 
 agent_resource = agents[selected_agent]
@@ -224,18 +241,19 @@ if prompt := st.chat_input("Ask anything..."):
 
     with st.chat_message("assistant"):
         try:
-            stream = chat_with_agent(
-                agent_resource=agent_resource,
-                message=prompt,
-                user_email=authenticated_user
-            )
-            
-            response_text = st.write_stream(stream)
-            
-            st.session_state[messages_key].append({
-                "role": "assistant", 
-                "content": response_text
-            })
+            with st.spinner("Thinking..."):
+                stream = chat_with_agent(
+                    agent_resource=agent_resource,
+                    message=prompt,
+                    user_email=authenticated_user
+                )
+                
+                response_text = st.write_stream(stream)
+                
+                st.session_state[messages_key].append({
+                    "role": "assistant", 
+                    "content": response_text
+                })
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
