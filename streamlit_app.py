@@ -147,7 +147,7 @@ with st.sidebar:
             st.session_state.get("project") != project or \
             st.session_state.get("location") != location:
             try:
-                vertexai.init(project, location)
+                vertexai.init(project=project, location=location)
                 st.session_state.vertex_initialized = True
                 st.session_state.project = project
                 st.session_state.location = location
@@ -155,7 +155,7 @@ with st.sidebar:
                 st.error(f"Failed to initialize Vertex AI: {e}")
         
         if st.session_state.get("vertex_initialized"):
-            with st.expander("**🎯 Agent Selection**", expanded=False):
+            with st.expander("**🎯 Agent Selection**", expanded=True):
                 agents = list_agents()        
                 if agents:
                     selected_agent = st.selectbox(
