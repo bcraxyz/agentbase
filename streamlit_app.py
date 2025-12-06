@@ -94,9 +94,11 @@ def chat_with_agent(agent_resource, message, user_email):
             yield chunk.content
 
 @st.cache_data(ttl=300)
-def list_agents():
+def list_agents(project, location):
     """List available agents from Vertex AI Agent Engine."""
     try:
+        vertexai.init(project=project, location=location)
+        
         agents_list = {}
         for agent in agent_engines.list():
             agents_list[agent.display_name] = agent.resource_name
