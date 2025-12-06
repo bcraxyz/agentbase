@@ -134,7 +134,7 @@ with st.sidebar:
     st.title("💬 Agentbase")
     
     # Google Cloud configuration
-    with st.expander("**☁️ Google Cloud Settings**", expanded=False)
+    with st.expander("**☁️ Google Cloud Settings**", expanded=False):
         project = st.text_input("Project ID", value=os.getenv("GOOGLE_CLOUD_PROJECT", ""), help="Your Google Cloud Project ID")        
         location = st.text_input("Location", value=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), help="Your Google Cloud Region for Vertex AI")
 
@@ -155,7 +155,7 @@ with st.sidebar:
                 st.error(f"Failed to initialize Vertex AI: {e}")
         
         if st.session_state.get("vertex_initialized"):
-            with st.expander("**🎯 Agent Selection**", expanded=False)
+            with st.expander("**🎯 Agent Selection**", expanded=False):
                 agents = list_agents()        
                 if agents:
                     selected_agent = st.selectbox(
