@@ -223,7 +223,7 @@ if prompt := st.chat_input("Ask anything..."):
                     "content": response_text
                 })
             else:
-                st.warning("⚠️ No response received from agent")L
+                st.warning("⚠️ No response received from agent")
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
