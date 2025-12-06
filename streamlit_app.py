@@ -1,12 +1,9 @@
 import os
-import dotenv
 import streamlit as st
 import vertexai 
 from vertexai import agent_engines
 from google.auth.transport import requests
 from google.oauth2 import id_token
-
-dotenv.load_dotenv()
 
 def validate_iap_jwt(iap_jwt, expected_audience):
     """
@@ -34,11 +31,7 @@ def validate_iap_jwt(iap_jwt, expected_audience):
 def get_authenticated_user():
     """
     Extract authenticated user from IAP headers using st.context.
-    Falls back to development mode if IAP headers not present.
     """
-    if os.getenv("ENVIRONMENT") == "dev":
-        return os.getenv("DEV_USER_EMAIL", "dev@example.com")
-    
     try:
         headers = st.context.headers
         if headers is None:
@@ -48,9 +41,9 @@ def get_authenticated_user():
         if not iap_jwt:
             return None
         
-        expected_audience = os.getenv("IAP_AUDIENCE", "")
+        expected_audience = st.secrets.get("IAP_AUDIENCE", "")
         if not expected_audience:
-            st.error("IAP_AUDIENCE environment variable not set")
+            st.error("IAP_AUDIENCE not configured in secrets")
             return None
         
         return validate_iap_jwt(iap_jwt, expected_audience)
@@ -90,8 +83,6 @@ def chat_with_agent(agent_resource, message, user_email):
     for chunk in response_stream:
         if hasattr(chunk, "text") and chunk.text:
             yield chunk.text
-        elif hasattr(chunk, "content") and chunk.content:
-            yield chunk.content
 
 @st.cache_data(ttl=300)
 def list_agents(project, location):
@@ -105,26 +96,6 @@ def list_agents(project, location):
         return agents_list
     except Exception as e:
         return {"error": str(e)}
-
-def generate_chat_response(agent_resource, message, user_email):
-    """
-    Manually iterates the stream to ensure we capture text correctly.
-    """
-    agent = agent_engines.get(agent_resource)
-    session_key = get_user_session_key(user_email, agent_resource)
-    
-    if session_key not in st.session_state.agent_sessions:
-        session = agent.create_session(user_id=user_email)
-        session_id = f"{agent_resource}/sessions/{session['id']}"
-        st.session_state.agent_sessions[session_key] = session_id
-    else:
-        session_id = st.session_state.agent_sessions[session_key]
-    
-    return agent.stream_query(
-        user_id=user_email,
-        session_id=session_id,
-        message=message,
-    )
 
 def reset_conversation(user_email, agent_resource, history_key):
     """Reset the conversation session for current user and agent."""
@@ -159,10 +130,9 @@ if "agent_sessions" not in st.session_state:
 with st.sidebar:
     st.title("💬 Agentbase")
     
-    # Google Cloud configuration
-    with st.expander("**☁️ Google Cloud Settings**", expanded=False):
-        project = st.text_input("Project ID", value=os.getenv("GOOGLE_CLOUD_PROJECT", ""), help="Your Google Cloud Project ID")        
-        location = st.text_input("Location", value=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"), help="Your Google Cloud Region for Vertex AI")
+    with st.expander("**⚙️ Settings**", expanded=False):
+        project = st.text_input("Project ID", value=st.secrets.get("GOOGLE_CLOUD_PROJECT", ""))        
+        location = st.text_input("Location", value=st.secrets.get("GOOGLE_CLOUD_LOCATION", "us-central1"))
 
     agents = {}
     selected_agent = None
@@ -181,13 +151,8 @@ with st.sidebar:
                 agents = agents_result
         
             if agents:
-                with st.expander("**🤖 Agent Selection**", expanded=True):
-                    selected_agent = st.selectbox(
-                        "Available Agents",
-                        list(agents.keys()),
-                        index=0,
-                        help="Select an agent to chat with"
-                    )
+                with st.expander("**✨ Agents**", expanded=True):
+                    selected_agent = st.selectbox("Select an Agent", list(agents.keys()), index=0)
                     
                     if selected_agent:
                         if st.button("🔄 Reset Conversation", use_container_width=True):
@@ -209,13 +174,10 @@ with st.sidebar:
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         
-        if os.getenv("ENVIRONMENT") != "dev":
-            st.markdown(
-                '<meta http-equiv="refresh" content="0;url=/_gcp_iap/clear_login_cookie">', 
-                unsafe_allow_html=True
-            )
-        else:
-            st.rerun()
+        st.markdown(
+            '<meta http-equiv="refresh" content="0;url=/_gcp_iap/clear_login_cookie">', 
+            unsafe_allow_html=True
+        )
 
 # Main chat interface
 if not selected_agent:
@@ -243,19 +205,18 @@ if prompt := st.chat_input("Ask anything..."):
 
     with st.chat_message("assistant"):
         try:
-            with st.spinner("Thinking..."):
-                stream = chat_with_agent(
-                    agent_resource=agent_resource,
-                    message=prompt,
-                    user_email=authenticated_user
-                )
-                
-                response_text = st.write_stream(stream)
-                
-                st.session_state[messages_key].append({
-                    "role": "assistant", 
-                    "content": response_text
-                })
+            stream = chat_with_agent(
+                agent_resource=agent_resource,
+                message=prompt,
+                user_email=authenticated_user
+            )
+            
+            response_text = st.write_stream(stream)
+            
+            st.session_state[messages_key].append({
+                "role": "assistant", 
+                "content": response_text
+            })
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
