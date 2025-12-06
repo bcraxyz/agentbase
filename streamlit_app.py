@@ -202,12 +202,12 @@ for message in st.session_state[messages_key]:
 
 # Chat input
 if prompt := st.chat_input("Ask anything..."):
-    st.session_state[messages_key].append({"role": "user", "content": prompt})
-    
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+   st.session_state[messages_key].append({"role": "user", "content": prompt})
+    
+     with st.chat_message("assistant"):
         try:
             with st.spinner("Thinking..."):
                 response_text = chat_with_agent(
@@ -217,14 +217,16 @@ if prompt := st.chat_input("Ask anything..."):
                 )
 
             if response_text:
+                st.markdown(response_text)
                 st.session_state[messages_key].append({
                     "role": "assistant", 
                     "content": response_text
                 })
-                st.markdown(response_text)
             else:
                 st.warning("⚠️ No response received from agent")
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
             st.error(error_msg)
+
+    st.rerun()
