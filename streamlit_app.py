@@ -62,7 +62,7 @@ def get_user_session_key(user_email, agent_resource):
 def chat_with_agent(agent_resource, message, user_email):
     """
     Send a message to the agent and get response.
-    Sessions are now keyed by user email and agent resource.
+    Sessions are keyed by user email and agent resource.
     """
     agent = agent_engines.get(agent_resource)
     session_key = get_user_session_key(user_email, agent_resource)
@@ -79,10 +79,16 @@ def chat_with_agent(agent_resource, message, user_email):
         session_id=session_id,
         message=message,
     )
-    
+
+    response = ""
     for chunk in response_stream:
         if hasattr(chunk, "text") and chunk.text:
-            yield chunk.text
+            response += chunk.text
+    
+    return response
+    #for chunk in response_stream:
+    #    if hasattr(chunk, "text") and chunk.text:
+    #        yield chunk.text
 
 @st.cache_data(ttl=300)
 def list_agents(project, location):
@@ -205,18 +211,34 @@ if prompt := st.chat_input("Ask anything..."):
 
     with st.chat_message("assistant"):
         try:
-            stream = chat_with_agent(
-                agent_resource=agent_resource,
-                message=prompt,
-                user_email=authenticated_user
-            )
+            with st.spinner("Thinking..."):
+                response_text = chat_with_agent(
+                    agent_resource=agent_resource,
+                    message=prompt,
+                    user_email=authenticated_user
+                )
+
+            if response_text:
+                st.markdown(response_text)
+                st.session_state[messages_key].append({
+                    "role": "assistant", 
+                    "content": response_text
+                })
+            else:
+                st.warning("No response received from agent")
+                
+            #stream = chat_with_agent(
+            #    agent_resource=agent_resource,
+            #    message=prompt,
+            #    user_email=authenticated_user
+            #)
             
-            response_text = st.write_stream(stream)
+            #response_text = st.write_stream(stream)
             
-            st.session_state[messages_key].append({
-                "role": "assistant", 
-                "content": response_text
-            })
+            #st.session_state[messages_key].append({
+            #    "role": "assistant", 
+            #    "content": response_text
+            #})
             
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"
