@@ -81,11 +81,13 @@ def chat_with_agent(agent_resource, message, user_email):
     )
 
     response = ""
+    raw_chunks = []
     for chunk in response_stream:
+        raw_chunks.append(chunk)
         if hasattr(chunk, "text") and chunk.text:
             response += chunk.text
     
-    return response
+    return response, raw_chunks
     #for chunk in response_stream:
     #    if hasattr(chunk, "text") and chunk.text:
     #        yield chunk.text
@@ -212,7 +214,7 @@ if prompt := st.chat_input("Ask anything..."):
     with st.chat_message("assistant"):
         try:
             with st.spinner("Thinking..."):
-                response_text = chat_with_agent(
+                response_text, raw_chunks = chat_with_agent(
                     agent_resource=agent_resource,
                     message=prompt,
                     user_email=authenticated_user
@@ -225,7 +227,12 @@ if prompt := st.chat_input("Ask anything..."):
                     "content": response_text
                 })
             else:
-                st.warning("No response received from agent")
+                st.warning("⚠️ No response received from agent")
+                with st.expander("🔍 Debug: Raw Response"):
+                    st.write(f"Received {len(raw_chunks)} chunks")
+                    for i, chunk in enumerate(raw_chunks):
+                        st.write(f"**Chunk {i}:** {type(chunk).__name__}")
+                        st.write(chunk)
                 
             #stream = chat_with_agent(
             #    agent_resource=agent_resource,
