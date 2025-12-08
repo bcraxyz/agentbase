@@ -178,7 +178,7 @@ with st.sidebar:
     st.success(f"👤 **Logged in as:**  \n{authenticated_user}")
 
     # Logout button - clears all sessions and state
-    if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+    if st.button("➡️ Logout", use_container_width=True, type="secondary"):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         
