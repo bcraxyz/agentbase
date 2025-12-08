@@ -24,7 +24,11 @@ def validate_iap_jwt(iap_jwt, expected_audience):
             certs_url=iap_certs_url
         )
         
-        return decoded_token.get("email")
+        email = decoded_token.get("email")
+        if email and ":" in email:
+            email = email.split(":")[-1]  # For federated identities
+        
+        return email
     except Exception as e:
         raise Exception(f"JWT validation failed: {e}")
 
