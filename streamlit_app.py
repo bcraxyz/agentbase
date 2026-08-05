@@ -1,236 +1,152 @@
 import os
 import streamlit as st
-import vertexai 
+import vertexai
 from vertexai import agent_engines
 from google.auth.transport import requests
 from google.oauth2 import id_token
 
-def validate_iap_jwt(iap_jwt, expected_audience):
-    """
-    Validate and decode IAP JWT token. Returns user email if valid, None otherwise.
-    """
-    try:
-        if not iap_jwt:
-            return None
-        
-        if not expected_audience:
-            raise Exception("IAP_AUDIENCE not configured")
-
-        iap_certs_url = "https://www.gstatic.com/iap/verify/public_key"
-        decoded_token = id_token.verify_token(
-            iap_jwt,
-            requests.Request(),
-            audience=expected_audience,
-            certs_url=iap_certs_url
-        )
-        
-        email = decoded_token.get("email")
-        if email and ":" in email:
-            email = email.split(":")[-1]  # For federated identities
-        
-        return email
-    except Exception as e:
-        raise Exception(f"JWT validation failed: {e}")
-
-def get_authenticated_user():
-    """
-    Extract authenticated user from IAP headers using st.context.
-    """
-    try:
-        headers = st.context.headers
-        if headers is None:
-            return None
-        
-        iap_jwt = headers.get("X-Goog-Iap-Jwt-Assertion")
-        if not iap_jwt:
-            return None
-        
-        expected_audience = os.getenv("IAP_AUDIENCE", "")
-        if not expected_audience:
-            st.error("IAP_AUDIENCE environment variable not configured.")
-            return None
-        
-        return validate_iap_jwt(iap_jwt, expected_audience)
-        
-    except Exception as e:
-        st.error(f"Error extracting IAP user: {e}")
-        return None
-
-def get_user_session_key(user_email, agent_resource):
-    """
-    Generate a unique session key for user-agent combination.
-    This ensures session isolation between users and agents.
-    """
-    return f"{user_email}::{agent_resource}"
-
-def chat_with_agent(agent_resource, message, user_email):
-    """
-    Send a message to the agent and get response.
-    Sessions are keyed by user email and agent resource.
-    """
-    agent = agent_engines.get(agent_resource)
-    session_key = get_user_session_key(user_email, agent_resource)
-    
-    if session_key not in st.session_state.agent_sessions:
-        session = agent.create_session(user_id=user_email)
-        session_id = session['id']
-        st.session_state.agent_sessions[session_key] = session_id
-    else:
-        session_id = st.session_state.agent_sessions[session_key]
-    
-    response_stream = agent.stream_query(
-        user_id=user_email,
-        session_id=session_id,
-        message=message,
-    )
-
-    response = ""
-    for chunk in response_stream:
-        if isinstance(chunk, dict) and "content" in chunk:
-            parts = chunk.get("content", {}).get("parts", [])
-            for part in parts:
-                if isinstance(part, dict) and "text" in part:
-                    response += part["text"]
-    
-    return response
-
-@st.cache_data()
-def list_agents(project, location):
-    """List available agents from Vertex AI Agent Engine."""
-    try:
-        vertexai.init(project=project, location=location)
-        
-        agents_list = {}
-        for agent in agent_engines.list():
-            agents_list[agent.display_name] = agent.resource_name
-        return agents_list
-    except Exception as e:
-        return {"error": str(e)}
-
-def reset_conversation(user_email, agent_resource, history_key):
-    """Reset the conversation session for current user and agent."""
-    session_key = get_user_session_key(user_email, agent_resource)
-    if session_key in st.session_state.agent_sessions:
-        del st.session_state.agent_sessions[session_key]
-    
-    if history_key in st.session_state:
-        st.session_state[history_key] = []
-
-# Page configuration
-st.set_page_config(
-    page_title="Agentbase", 
-    page_icon="💬", 
-    layout="wide",
-    initial_sidebar_state="expanded"
+PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+IAP_AUDIENCE = os.getenv("IAP_AUDIENCE", "")
+IAP_CERTS_URL = os.getenv(
+    "IAP_CERTS_URL", "https://www.gstatic.com/iap/verify/public_key"
 )
 
-# Get authenticated user
-authenticated_user = get_authenticated_user()
+st.set_page_config(
+    page_title="Agentbase",
+    page_icon="💬",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
-if not authenticated_user:
-    st.error("⛔ Authentication Required")
-    st.info("This application requires authentication via Google Cloud IAP. Please ensure IAP is properly configured.")
+
+def get_authenticated_user():
+    headers = st.context.headers
+    if not headers:
+        return None
+
+    iap_jwt = headers.get("X-Goog-Iap-Jwt-Assertion")
+    if not iap_jwt:
+        return None
+
+    try:
+        decoded = id_token.verify_token(
+            iap_jwt,
+            requests.Request(),
+            audience=IAP_AUDIENCE,
+            certs_url=IAP_CERTS_URL,
+        )
+    except Exception:
+        return None
+
+    email = decoded.get("email")
+    if email and ":" in email:
+        email = email.split(":")[-1]
+    return email
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def list_agents(project, location):
+    return {a.display_name: a.resource_name for a in agent_engines.list()}
+
+
+@st.cache_resource(show_spinner=False)
+def get_agent(agent_resource):
+    return agent_engines.get(agent_resource)
+
+
+def stream_reply(agent_resource, message, user_email):
+    agent = get_agent(agent_resource)
+    session_key = f"{user_email}::{agent_resource}"
+
+    session_id = st.session_state.agent_sessions.get(session_key)
+    if session_id is None:
+        session_id = agent.create_session(user_id=user_email)["id"]
+        st.session_state.agent_sessions[session_key] = session_id
+
+    for chunk in agent.stream_query(
+        user_id=user_email, session_id=session_id, message=message
+    ):
+        if not isinstance(chunk, dict):
+            continue
+        for part in chunk.get("content", {}).get("parts", []):
+            if isinstance(part, dict) and part.get("text"):
+                yield part["text"]
+
+
+missing = [
+    name
+    for name, value in (
+        ("GOOGLE_CLOUD_PROJECT", PROJECT),
+        ("IAP_AUDIENCE", IAP_AUDIENCE),
+    )
+    if not value
+]
+if missing:
+    st.error(f"⛔ Not configured: {', '.join(missing)}")
     st.stop()
 
-# Initialize session state for agent sessions (keyed by user:agent)
+user_email = get_authenticated_user()
+if not user_email:
+    st.error("⛔ Authentication required")
+    st.info("This application must be served behind Google Cloud IAP.")
+    st.stop()
+
+vertexai.init(project=PROJECT, location=LOCATION)
+
 if "agent_sessions" not in st.session_state:
     st.session_state.agent_sessions = {}
 
-# Sidebar configuration
 with st.sidebar:
     st.title("💬 Agentbase")
-    
-    with st.expander("**⚙️ Settings**", expanded=False):
-        project = st.text_input("Project ID", value=os.getenv("GOOGLE_CLOUD_PROJECT", ""))        
-        location = st.text_input("Location", value=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"))
 
-    agents = {}
-    selected_agent = None
-    
-    # Initialize Vertex AI if credentials provided
-    if project and location:
-        try:
-            vertexai.init(project=project, location=location)
+    try:
+        agents = list_agents(PROJECT, LOCATION)
+    except Exception as e:
+        st.error(f"⚠️ Could not list agents: {e}")
+        st.stop()
 
-            agents_result = list_agents(project, location)    
-            if "error" in agents_result:
-                st.error(f"Error listing agents: {agents_result['error']}")
-            else:
-                agents = agents_result
-        
-            if agents:
-                with st.expander("**✨ Agents**", expanded=True):
-                    selected_agent = st.selectbox("Select an Agent", list(agents.keys()), index=0)
-                    
-                    if selected_agent:
-                        if st.button("🔄 Reset Conversation", use_container_width=True):
-                            reset_conversation(authenticated_user, agents[selected_agent], f"messages_{agents[selected_agent]}")
-                            st.rerun()
-            else:
-                if not "error" in agents_result:
-                    st.warning("⚠️ No agents found")
-        except Exception as e:
-            st.error(f"Initialization Error: {e}")
-    else:
-        st.warning("⚠️ Please configure Project ID and Location")
+    if not agents:
+        st.warning(f"⚠️ No agents found in {PROJECT} / {LOCATION}")
+        st.stop()
 
-    # Display authenticated user
-    st.success(f"👤 **Logged in as:**  \n{authenticated_user}")
+    selected_agent = st.selectbox("Agent", list(agents))
+    agent_resource = agents[selected_agent]
 
-    # Logout button - clears all sessions and state
-    if st.button("➡️ Logout", use_container_width=True, type="secondary"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        
-        st.markdown(
-            '<meta http-equiv="refresh" content="0;url=/_gcp_iap/clear_login_cookie">', 
-            unsafe_allow_html=True
-        )
+    if st.button("🔄 Reset conversation", use_container_width=True):
+        st.session_state.agent_sessions.pop(f"{user_email}::{agent_resource}", None)
+        st.session_state[f"messages_{agent_resource}"] = []
+        st.rerun()
 
-# Main chat interface
-if not selected_agent:
-    st.info("👈 Please select an agent to get started.")
-    st.stop()
+    st.success(f"👤 **Logged in as:**  \n{user_email}")
+    st.link_button(
+        "➡️ Logout", "/_gcp_iap/clear_login_cookie", use_container_width=True
+    )
 
-agent_resource = agents[selected_agent]
-
-# Initialize messages for this specific agent
 messages_key = f"messages_{agent_resource}"
 if messages_key not in st.session_state:
     st.session_state[messages_key] = []
+messages = st.session_state[messages_key]
 
-# Display chat history
-for message in st.session_state[messages_key]:
+for message in messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
 if prompt := st.chat_input("Ask anything..."):
+    messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    st.session_state[messages_key].append({"role": "user", "content": prompt})
-    
     with st.chat_message("assistant"):
         try:
-            with st.spinner("Thinking..."):
-                response_text = chat_with_agent(
-                    agent_resource=agent_resource,
-                    message=prompt,
-                    user_email=authenticated_user
-                )
-
-            if response_text:
-                st.markdown(response_text)
-                st.session_state[messages_key].append({
-                    "role": "assistant", 
-                    "content": response_text
-                })
-            else:
+            reply = st.write_stream(stream_reply(agent_resource, prompt, user_email))
+            if not reply:
                 st.warning("⚠️ No response received from agent")
-            
         except Exception as e:
-            error_msg = f"❌ Error: {str(e)}"
-            st.error(error_msg)
+            reply = None
+            st.error(f"❌ {e}")
 
-    st.rerun()
+    if reply:
+        messages.append({"role": "assistant", "content": reply})
+    else:
+        messages.pop()
