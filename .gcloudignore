@@ -1,0 +1,16 @@
+#!include:.gitignore
+
+.git
+.gitignore
+.github
+.devcontainer
+__pycache__
+*.pyc
+.venv
+venv
+.DS_Store
+*.md
+.env
+.env.example
+devauth.py
+requirements-dev.txt
