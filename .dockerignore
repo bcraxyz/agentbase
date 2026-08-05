@@ -10,7 +10,11 @@ ENV
 env
 .git
 .gitignore
+.github
+.devcontainer
 .DS_Store
 *.md
 .env
 .env.example
+devauth.py
+requirements-dev.txt
