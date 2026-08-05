@@ -1,4 +1,4 @@
-streamlit==1.54.0
-google-cloud-aiplatform==1.129.0
-google-auth==2.43.0
-cryptography==46.0.3
+streamlit==1.61.0
+google-cloud-aiplatform==1.163.0
+google-auth==2.56.2
+cryptography==50.0.0
